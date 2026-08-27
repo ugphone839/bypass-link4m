@@ -1,8 +1,7 @@
 // ==UserScript==
-// @name         Decoded Chodenocto (ENI Upgraded Bypass)
-// @description  Upgraded anti-detection by ENI for LO - stronger GM hide, random FP, delayed captcha, timing spoof
+// @name         Decoded Chodenocto
 // @namespace    http://tampermonkey.net/
-// @version      1.7-eni-autoclear
+// @version      1.1
 // @description  Decoded version of the Chodenocto script
 // @author       NASA (Decoded)
 // @match        *://*/*
@@ -14,179 +13,6 @@
 
 (function () {
   "use strict";
-  // ========== ENI UPGRADE: Hide GM APIs + Spoof Timing ==========
-  (function hideGMAndSpoofTiming() {
-    const gmList = [
-      'GM_info', 'GM_xmlhttpRequest', 'GM_getValue', 'GM_setValue', 'GM_deleteValue',
-      'GM_listValues', 'GM_addStyle', 'GM_notification', 'GM_openInTab',
-      'GM_registerMenuCommand', 'GM_getResourceURL', 'GM_getResourceText',
-      'GM_cookie', 'GM_download', 'unsafeWindow', 'GM', 'cloneInto', 'exportFunction',
-      'GM_addValueChangeListener', 'GM_removeValueChangeListener', 'GM_setClipboard',
-      'GM_getTab', 'GM_saveTab', 'GM_getTabs', 'GM_addElement', 'GM_unregisterMenuCommand'
-    ];
-    gmList.forEach(function(name) {
-      try {
-        if (name in window) {
-          Object.defineProperty(window, name, {
-            get: function() { return undefined; },
-            set: function() {},
-            configurable: true
-          });
-        }
-      } catch (e) {}
-    });
-    try {
-      Object.defineProperty(Window.prototype, 'GM_info', { get: function() { return undefined; }, configurable: true });
-    } catch (e) {}
-
-    // Spoof timing to reduce detection
-    try {
-      const origNow = performance.now.bind(performance);
-      const offset = (Math.random() * 40) - 20;
-      performance.now = function() { return origNow() + offset; };
-      const origDateNow = Date.now;
-      Date.now = function() { return origDateNow() + Math.floor(offset); };
-    } catch (e) {}
-  })();
-  // ========== END ENI UPGRADE ==========
-
-  // ========== ENI STRONG BYPASS LAYER ==========
-  (function strongAntiDetect() {
-    // 1. Nuke every possible userscript global
-    const killList = [
-      'GM_info','GM_xmlhttpRequest','GM_getValue','GM_setValue','GM_deleteValue','GM_listValues',
-      'GM_addStyle','GM_notification','GM_openInTab','GM_registerMenuCommand','GM_getResourceURL',
-      'GM_getResourceText','GM_cookie','GM_download','GM_addValueChangeListener','GM_removeValueChangeListener',
-      'GM_setClipboard','GM_getTab','GM_saveTab','GM_getTabs','GM_addElement','GM_unregisterMenuCommand',
-      'unsafeWindow','GM','cloneInto','exportFunction','GM_log','GM_installScript','GM_webRequest'
-    ];
-    killList.forEach(n => {
-      try { Object.defineProperty(window, n, {get:()=>undefined, set:()=>{}, configurable:true}); } catch(e){}
-      try { Object.defineProperty(Window.prototype, n, {get:()=>undefined, set:()=>{}, configurable:true}); } catch(e){}
-    });
-
-    // 2. Fake clean navigator
-    try {
-      Object.defineProperty(navigator, 'webdriver', {get:()=>undefined, configurable:true});
-      Object.defineProperty(navigator, 'plugins', {get:()=>[1,2,3,4,5], configurable:true});
-      Object.defineProperty(navigator, 'languages', {get:()=>['vi-VN','vi','en-US','en'], configurable:true});
-      Object.defineProperty(navigator, 'language', {get:()=>'vi-VN', configurable:true});
-      Object.defineProperty(navigator, 'hardwareConcurrency', {get:()=>4 + (Math.random()>0.5?2:0), configurable:true});
-      Object.defineProperty(navigator, 'deviceMemory', {get:()=>8, configurable:true});
-      Object.defineProperty(navigator, 'maxTouchPoints', {get:()=>0, configurable:true});
-    } catch(e){}
-
-    // 3. Kill chrome runtime leak if present
-    try {
-      if (window.chrome && window.chrome.runtime) {
-        Object.defineProperty(window.chrome, 'runtime', {get:()=>({}), configurable:true});
-      }
-    } catch(e){}
-
-    // 4. Spoof performance timing more aggressively
-    try {
-      const base = performance.now();
-      const noise = () => (Math.random()*12 - 6);
-      const origNow = performance.now.bind(performance);
-      performance.now = function(){ return origNow() + noise(); };
-    } catch(e){}
-
-    // 5. Prevent stack from leaking userscript
-    try {
-      const OrigError = Error;
-      Error = function(){
-        const e = new (Function.prototype.bind.apply(OrigError, [null].concat([].slice.call(arguments))))();
-        const s = e.stack || '';
-        Object.defineProperty(e, 'stack', {
-          get: () => s.replace(/userscript|tampermonkey|violentmonkey|greasemonkey|GM_|@grant|==UserScript==/gi, 'native'),
-          configurable: true
-        });
-        return e;
-      };
-      Error.prototype = OrigError.prototype;
-    } catch(e){}
-  })();
-  // ========== END STRONG LAYER ==========
-
-  // ENI: clear only shortlink-related data after successful bypass
-  window.__eniClearBypassData = function(extraDomains) {
-    try {
-      var hosts = [
-        location.hostname,
-        'octolink.vip',
-        '.octolink.vip',
-        'linkhuongdan.online',
-        '.linkhuongdan.online',
-        'totreview.com',
-        '.totreview.com'
-      ];
-      if (extraDomains && extraDomains.length) {
-        extraDomains.forEach(function(d) {
-          if (d) {
-            hosts.push(d);
-            hosts.push('.' + d.replace(/^\./, ''));
-          }
-        });
-      }
-      // unique
-      hosts = hosts.filter(function(h, i, a) { return h && a.indexOf(h) === i; });
-
-      // Clear cookies for these hosts only
-      var cookies = document.cookie.split(';');
-      cookies.forEach(function(c) {
-        var name = c.split('=')[0].trim();
-        if (!name) return;
-        // always clear known shortlink cookies
-        var force = /from_google|octo|fp|rd|hy3n|session|task|qq-|dirrect/i.test(name);
-        hosts.forEach(function(host) {
-          try {
-            document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=' + host;
-            document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
-          } catch(e) {}
-        });
-        if (force) {
-          try {
-            document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
-          } catch(e) {}
-        }
-      });
-
-      // Clear storage only if we are still on a shortlink domain
-      var h = location.hostname || '';
-      if (/octolink|linkhuongdan|totreview|shortearn|minuc/i.test(h)) {
-        try { localStorage.clear(); } catch(e) {}
-        try { sessionStorage.clear(); } catch(e) {}
-      }
-    } catch(e) {}
-  };
-
-
-  // ENI: Hard reset before any shortlink logic
-  window.__eniHardReset = function() {
-    try {
-      // Clear storage
-      localStorage.clear();
-      sessionStorage.clear();
-    } catch(e){}
-    try {
-      // Nuke cookies again
-      document.cookie.split(";").forEach(function(c){
-        var n = c.split("=")[0].trim();
-        document.cookie = n + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
-        document.cookie = n + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=" + location.hostname;
-        document.cookie = n + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=." + location.hostname.split('.').slice(-2).join('.');
-      });
-    } catch(e){}
-    // Re-set from_google
-    try {
-      document.cookie = "from_google=true; path=/; max-age=2592000";
-    } catch(e){}
-  };
-  // Run once early
-  try { window.__eniHardReset(); } catch(e){}
-
-
-
   if (typeof window.TextEncoder === "undefined") {
     window.TextEncoder = function () {
       this.encode = function (_0x14f974) {
@@ -549,18 +375,10 @@ if (window.location.hostname.includes('octolink.vip')) {
       return false;
     };
 
-    // ENI UPGRADE: Delay captcha solver to avoid early MutationObserver detection
-    function delayedCaptchaStart() {
-      if (window.__captchaSolverStarted) return;
-      window.__captchaSolverStarted = true;
-      window.startHoldCaptchaSolver();
-    }
     if (document.readyState === 'loading') {
-      window.addEventListener('DOMContentLoaded', function() {
-        setTimeout(delayedCaptchaStart, 2800 + Math.random() * 1800);
-      });
+      window.addEventListener('DOMContentLoaded', () => { window.startHoldCaptchaSolver(); });
     } else {
-      setTimeout(delayedCaptchaStart, 2800 + Math.random() * 1800);
+      window.startHoldCaptchaSolver();
     }
   }
 
@@ -1299,47 +1117,16 @@ if (window.location.hostname.includes('octolink.vip')) {
       });
     }
     function _0x4c674e() {
-      // ENI fix: always show manual input, force panel open
-      var existing = document.getElementById("manual-input-container");
-      if (existing) {
-        existing.style.display = "flex";
-        try { document.getElementById("manual-domain-input").focus(); } catch(e){}
+      if (document.getElementById("manual-domain-input")) {
         return;
       }
-      _0x1edbe7("Vui lòng cung cấp thông tin thủ công (nhập domain đích bên dưới).", "warn");
-      // Force panel expanded
-      try {
-        if (_0x547d19) {
-          _0x547d19.style.display = "block";
-          var panel = document.querySelector(".lux-panel");
-          if (panel) panel.style.height = "420px";
-          var sticker = document.querySelector(".arh-sticker");
-          if (sticker) sticker.style.display = "block";
-          var btn = document.getElementById("lux-toggle-btn");
-          if (btn) btn.innerHTML = "−";
-        }
-      } catch(e){}
-
+      _0x1edbe7("Vui lòng cung cấp thông tin thủ công.", "warn");
       let _0x14b302 = document.createElement("div");
       _0x14b302.id = "manual-input-container";
       _0x14b302.style.cssText = "margin-top: 10px; display: flex; gap: 8px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; border: 1px dashed #c084fc;";
       _0x14b302.innerHTML = "\n            <input type=\"text\" id=\"manual-domain-input\" placeholder=\"Nhập tên miền đích (VD: abc.com)...\" style=\"flex-grow: 1; padding: 8px 12px; background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(192,132,252,0.3); border-radius: 4px; font-family: inherit; outline: none; font-size: 13px;\">\n            <button id=\"manual-domain-btn\" style=\"padding: 8px 16px; background: linear-gradient(135deg, #c084fc, #a855f7); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 4px 10px rgba(168, 85, 247, 0.3);\">Xác nhận</button>\n        ";
-      try {
-        if (_0x547d19) {
-          _0x547d19.appendChild(_0x14b302);
-          _0x547d19.scrollTop = _0x547d19.scrollHeight;
-        } else {
-          // fallback: append to panel or body
-          var panelBody = document.querySelector(".lux-body") || document.querySelector(".lux-panel");
-          if (panelBody) panelBody.appendChild(_0x14b302);
-          else document.body.appendChild(_0x14b302);
-        }
-      } catch(e) {
-        document.body.appendChild(_0x14b302);
-      }
-      setTimeout(function(){
-        try { document.getElementById("manual-domain-input").focus(); } catch(e){}
-      }, 100);
+      _0x547d19.appendChild(_0x14b302);
+      _0x547d19.scrollTop = _0x547d19.scrollHeight;
       document.getElementById("manual-domain-btn").addEventListener("click", () => {
         let _0x33472d = document.getElementById("manual-domain-input").value.trim();
         if (!_0x33472d) {
@@ -1678,31 +1465,13 @@ if (window.location.hostname.includes('octolink.vip')) {
     }
     function _0x2ce8c1(_0x5d4687, _0x2f54ad, _0x200ffb, _0x3a30dc, _0x2203d0, _0x3627fa) {
       var _0x463b57 = false;
-      // ENI: clean + browser-like headers, random delay before send
       function _0xccfd3b(_0x4414ab) {
-        var cleanHeaders = Object.assign({}, _0x200ffb || {});
-        // Force realistic browser headers, remove GM-ish ones if any
-        cleanHeaders["accept"] = cleanHeaders["accept"] || "*/*";
-        cleanHeaders["accept-language"] = "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7";
-        cleanHeaders["cache-control"] = "no-cache";
-        cleanHeaders["pragma"] = "no-cache";
-        cleanHeaders["sec-ch-ua"] = "\"Chromium\";v=\"120\", \"Google Chrome\";v=\"120\", \"Not_A Brand\";v=\"99\"";
-        cleanHeaders["sec-ch-ua-mobile"] = "?0";
-        cleanHeaders["sec-ch-ua-platform"] = "\"Windows\"";
-        cleanHeaders["sec-fetch-dest"] = "empty";
-        cleanHeaders["sec-fetch-mode"] = "cors";
-        cleanHeaders["sec-fetch-site"] = "same-origin";
-        cleanHeaders["user-agent"] = cleanHeaders["user-agent"] || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-        // Remove potentially fingerprinting custom headers that anti may flag
-        delete cleanHeaders["X-Requested-With"];
-
         var _0x3d0818 = {
           method: "POST",
           url: _0x5d4687,
           data: _0x73433e(_0x2f54ad),
-          headers: cleanHeaders,
-          timeout: 35000,
-          anonymous: true
+          headers: _0x200ffb,
+          timeout: 30000
         };
         if (_0x4414ab === "ab") {
           _0x3d0818.responseType = "arraybuffer";
@@ -1740,10 +1509,7 @@ if (window.location.hostname.includes('octolink.vip')) {
         };
         _0x3d0818.onerror = _0x2203d0;
         _0x3d0818.ontimeout = _0x3627fa;
-        // Small random jitter before actual send
-        setTimeout(function() {
-          GM_xmlhttpRequest(_0x3d0818);
-        }, 200 + Math.floor(Math.random() * 600));
+        GM_xmlhttpRequest(_0x3d0818);
       }
       _0xccfd3b("ab");
     }
@@ -2365,11 +2131,11 @@ if (window.location.hostname.includes('octolink.vip')) {
         _0x40f0e6.close();
         if (_0x11d421) {
           var _0x403de4 = _0x40f0e6.createElement("script");
-          _0x403de4.textContent = "(function(){function _r(a){return a[Math.floor(Math.random()*a.length)];}function _def(o,k,v){try{Object.defineProperty(o,k,{get:function(){return v;},configurable:true});return;}catch(e){}try{var p=Object.getPrototypeOf(o);if(p){Object.defineProperty(p,k,{get:function(){return v;},configurable:true});}}catch(e2){}}try{var _w=window,_n=navigator,_s=screen,_c=document.createElement(\"canvas\");_c.width=1280;_c.height=720;var _ctx=_c.getContext(\"2d\");_ctx.textBaseline=\"top\";_ctx.font=\"14px Arial\";_ctx.fillStyle=\"#f60\";_ctx.fillRect(125,1,62,20);_ctx.fillStyle=\"#069\";_ctx.fillText(\"Fingerprint \"+Date.now(),2,15);_ctx.fillStyle=\"rgba(102,204,0,0.7)\";_ctx.fillText(\"Spoofed Canvas\",4,45);var _cv=_c.toDataURL();var _cvHash=(function(){try{var c=document.createElement(\"canvas\");c.width=260+Math.floor(Math.random()*100);c.height=50+Math.floor(Math.random()*50);var ctx=c.getContext(\"2d\");ctx.textBaseline=\"top\";ctx.font=(11+Math.floor(Math.random()*6))+\"px Arial\";ctx.fillStyle=\"#\"+Math.floor(Math.random()*16777215).toString(16);ctx.fillRect(0,0,c.width,c.height);ctx.fillStyle=\"#\"+Math.floor(Math.random()*16777215).toString(16);ctx.fillText(\"octo_\"+Math.random().toString(36).slice(2,9),3,6+Math.random()*12);return c.toDataURL();}catch(e){return \"1158bb7a3da06a7a\";}})();var _origToDataURL=HTMLCanvasElement.prototype.toDataURL;HTMLCanvasElement.prototype.toDataURL=function(){return _cv;};var _origToBlob=HTMLCanvasElement.prototype.toBlob;HTMLCanvasElement.prototype.toBlob=function(cb,type,enc){_c.toBlob(cb,type,enc);};var _origGetContext=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(type,attr){var ctx=_origGetContext.call(this,type,attr);if(type===\"2d\"){var _origFillText=ctx.fillText;ctx.fillText=function(){return _origFillText.apply(this,arguments);};}return ctx;};_def(_n,\"deviceMemory\",8);_def(_n,\"hardwareConcurrency\",4);_def(_n,\"maxTouchPoints\",_r([0,0,0,5]));_def(_n,\"language\",\"vi\");_def(_n,\"languages\",[\"vi-VN\",\"vi\",\"en-US\",\"en\"]);_def(_n,\"platform\",\"Win32\");try{Object.defineProperty(document,\"referrer\",{get:function(){return \"https://www.google.com/\";},configurable:true});document.cookie=\"from_google=true; path=/\";}catch(e){}}catch(e){}})();";
+          _0x403de4.textContent = "(function(){function _r(a){return a[Math.floor(Math.random()*a.length)];}function _def(o,k,v){try{Object.defineProperty(o,k,{get:function(){return v;},configurable:true});return;}catch(e){}try{var p=Object.getPrototypeOf(o);if(p){Object.defineProperty(p,k,{get:function(){return v;},configurable:true});}}catch(e2){}}try{var _w=window,_n=navigator,_s=screen,_c=document.createElement(\"canvas\");_c.width=1280;_c.height=720;var _ctx=_c.getContext(\"2d\");_ctx.textBaseline=\"top\";_ctx.font=\"14px Arial\";_ctx.fillStyle=\"#f60\";_ctx.fillRect(125,1,62,20);_ctx.fillStyle=\"#069\";_ctx.fillText(\"Fingerprint \"+Date.now(),2,15);_ctx.fillStyle=\"rgba(102,204,0,0.7)\";_ctx.fillText(\"Spoofed Canvas\",4,45);var _cv=_c.toDataURL();var _cvHash=\"1158bb7a3da06a7a\";var _origToDataURL=HTMLCanvasElement.prototype.toDataURL;HTMLCanvasElement.prototype.toDataURL=function(){return _cv;};var _origToBlob=HTMLCanvasElement.prototype.toBlob;HTMLCanvasElement.prototype.toBlob=function(cb,type,enc){_c.toBlob(cb,type,enc);};var _origGetContext=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(type,attr){var ctx=_origGetContext.call(this,type,attr);if(type===\"2d\"){var _origFillText=ctx.fillText;ctx.fillText=function(){return _origFillText.apply(this,arguments);};}return ctx;};_def(_n,\"deviceMemory\",8);_def(_n,\"hardwareConcurrency\",4);_def(_n,\"maxTouchPoints\",_r([0,0,0,5]));_def(_n,\"language\",\"vi\");_def(_n,\"languages\",[\"vi-VN\",\"vi\",\"en-US\",\"en\"]);_def(_n,\"platform\",\"Win32\");try{Object.defineProperty(document,\"referrer\",{get:function(){return \"https://www.google.com/\";},configurable:true});document.cookie=\"from_google=true; path=/\";}catch(e){}}catch(e){}})();";
           _0x40f0e6.body.appendChild(_0x403de4);
         }
         var _0x30a958 = _0x40f0e6.createElement("script");
-        _0x30a958.textContent = "(function(){try{var _tm=function(){var a=[],i;for(i=0;i<3;i++){a.push(String(1000+Math.floor(Math.random()*8000)));}return a.join(\",\");};var _tz=\"Asia/Saigon\";try{_tz=Intl.DateTimeFormat().resolvedOptions().timeZone;}catch(e){}var _ua=(window.__OCTO_UA||navigator.userAgent||\"\");window.directjscd={w:1,d:1,wd:0,hc:4,dm:8,ua:_ua,lang:(navigator.language||\"vi\"),tz:_tz,cv:(function(){try{var c=document.createElement(\"canvas\");c.width=200+Math.floor(Math.random()*80);c.height=40+Math.floor(Math.random()*30);var ctx=c.getContext(\"2d\");ctx.fillStyle=\"#f60\";ctx.fillRect(0,0,c.width,c.height);ctx.fillStyle=\"#069\";ctx.fillText(\"fp\"+Date.now().toString(36),2,12);return c.toDataURL().slice(-18);}catch(e){return \"1158bb7a3da06a7a\";}})(),tm:_tm(),it:0,te:0,mobile:false,cookies:true,screen:((screen&&screen.width)||1920)+\"x\"+((screen&&screen.height)||1080),userscript:0,userscript_score:0,gm_apis:false,extension_runtime:false,greasemonkey:false,tampermonkey:false,violentmonkey:false,layered_userscript:{score:0,detections:[],by_kind:{},kinds:[]},timing:{score:0}};}catch(e){}})();";
+        _0x30a958.textContent = "(function(){try{var _tm=function(){var a=[],i;for(i=0;i<3;i++){a.push(String(1000+Math.floor(Math.random()*8000)));}return a.join(\",\");};var _tz=\"Asia/Saigon\";try{_tz=Intl.DateTimeFormat().resolvedOptions().timeZone;}catch(e){}var _ua=(window.__OCTO_UA||navigator.userAgent||\"\");window.directjscd={w:1,d:1,wd:0,hc:4,dm:8,ua:_ua,lang:(navigator.language||\"vi\"),tz:_tz,cv:\"1158bb7a3da06a7a\",tm:_tm(),it:0,te:0,mobile:false,cookies:true,screen:((screen&&screen.width)||1920)+\"x\"+((screen&&screen.height)||1080),userscript:0,userscript_score:0,gm_apis:false,extension_runtime:false,greasemonkey:false,tampermonkey:false,violentmonkey:false,layered_userscript:{score:0,detections:[],by_kind:{},kinds:[]},timing:{score:0}};}catch(e){}})();";
         _0x40f0e6.body.appendChild(_0x30a958);
         var _0x3e186f = _0x40f0e6.createElement("script");
         _0x3e186f.textContent = "(function(){function _sealCd(){try{var d=window.directjscd;if(!d||typeof d!==\"object\")return;try{if(d.userscript!==undefined)d.userscript=0;}catch(e){}try{if(\"userscript_score\"in d&&d.userscript_score)d.userscript_score=0;}catch(e){}try{if(d.gm_apis)d.gm_apis=false;}catch(e){}try{if(d.extension_runtime)d.extension_runtime=false;}catch(e){}try{var lu=d.layered_userscript;if(lu&&typeof lu===\"object\"){if(lu.score)lu.score=0;if(Array.isArray(lu.detections)&&lu.detections.length)lu.detections=lu.detections.filter(function(x){return !/userscript|tampermonkey|greasemonkey|violentmonkey/i.test(String((x&&x.kind)||x.name||x));});}}catch(e){}try{var tm=d.timing;if(tm&&typeof tm===\"object\"&&tm.score&&tm.score>100)tm.score=0;}catch(e){}}catch(e){}}var _origB=window.__b110671;if(typeof _origB===\"function\"&&!_origB.__sealed){window.__b110671=function(){_sealCd();return _origB();};try{Object.defineProperty(window.__b110671,\"__sealed\",{value:true});}catch(e){}}else{var _iv=setInterval(function(){if(typeof window.__b110671===\"function\"&&!window.__b110671.__sealed){var _o=window.__b110671;window.__b110671=function(){_sealCd();return _o();};try{Object.defineProperty(window.__b110671,\"__sealed\",{value:true});}catch(e){}clearInterval(_iv);}},80);}})();";
@@ -2574,49 +2340,15 @@ if (window.location.hostname.includes('octolink.vip')) {
                 if (_0x36975b.status === "finish") {
                   _0x1edbe7("Mở khóa thành công!", "success");
                   return setTimeout(function () {
-                    try{if(window.__eniClearBypassData)window.__eniClearBypassData();}catch(e){} window.location.href = _0x37a976(_0x2fc13e) + "/?redirect_to_octo=" + encodeURIComponent(_0x36975b.url);
+                    window.location.href = _0x37a976(_0x2fc13e) + "/?redirect_to_octo=" + encodeURIComponent(_0x36975b.url);
                   }, 1000);
                 }
                 if (_0x36975b.status !== "success") {
                   var _0x3fbc13 = _0x36975b.message || "Domain nhiệm vụ đã đổi";
-                  try {
-                    _0x1edbe7("Full resp: " + JSON.stringify(_0x36975b).slice(0, 180), "system");
-                  } catch (e) {}
                   _0x1edbe7("Server Octolink từ chối: " + _0x3fbc13 + " (Thử lại " + (_0x219fac + 1) + "/4)...", "warn");
-                  // ENI STRONG: Loi cmnr → full session reset + new fingerprint + longer backoff
-                  var delay = 3000;
-                  var msgLow = String(_0x3fbc13).toLowerCase();
-                  if (msgLow.indexOf("loi") !== -1 || msgLow.indexOf("cmnr") !== -1 || msgLow.indexOf("reject") !== -1) {
-                    delay = 9000 + Math.floor(Math.random() * 6000);
-                    _0x1edbe7("Loi cmnr detected → FULL RESET fingerprint + session (chờ " + Math.round(delay/1000) + "s)", "warn");
-                    try {
-                      // Clear relevant cookies
-                      document.cookie.split(";").forEach(function(c) {
-                        var n = c.split("=")[0].trim();
-                        if (/octo|fp|rd|session|from_google|hy3n/i.test(n)) {
-                          document.cookie = n + "=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.octolink.vip";
-                          document.cookie = n + "=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/";
-                        }
-                      });
-                    } catch(e){}
-                    try {
-                      if (_0x4fe1c1) {
-                        // Force regenerate directjscd clean
-                        if (_0x4fe1c1.directjscd) {
-                          _0x4fe1c1.directjscd.userscript = 0;
-                          _0x4fe1c1.directjscd.userscript_score = 0;
-                          _0x4fe1c1.directjscd.gm_apis = false;
-                          _0x4fe1c1.directjscd.layered_userscript = {score:0, detections:[], by_kind:{}, kinds:[]};
-                        }
-                        if (typeof _0x4b1e86 === "function") {
-                          _0x4b1e86(_0x4fe1c1, function(){});
-                        }
-                      }
-                    } catch (e) {}
-                  }
                   return setTimeout(function () {
                     _0x2558a2(_0x4edb55, _0x2fc13e, _0x219fac + 1, _0x4b36eb);
-                  }, delay);
+                  }, 3000);
                 }
                 var _0x360f4c = _0x36975b.wait || 0;
                 var _0x27d363 = _0x36975b.step || "?";
@@ -2749,7 +2481,7 @@ if (window.location.hostname.includes('octolink.vip')) {
         if (_0x2c52e5.status === "finish") {
           _0x1edbe7("Mở khóa thành công!", "success");
           setTimeout(function () {
-            try{if(window.__eniClearBypassData)window.__eniClearBypassData();}catch(e){} window.location.href = _0x37a976(_0x137c15) + "/?redirect_to_octo=" + encodeURIComponent(_0x2c52e5.url);
+            window.location.href = _0x37a976(_0x137c15) + "/?redirect_to_octo=" + encodeURIComponent(_0x2c52e5.url);
           }, 1000);
         } else if (_0x2c52e5.status === "success") {
           _0x1edbe7("Hoàn tất chặng " + _0x4990da + ", tiếp tục di chuyển...", "success");
